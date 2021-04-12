@@ -23,12 +23,18 @@ class AudioPlayer {
     private val audioSpecificConfig = ByteArray(2).apply {
         this[0] = ((audioProfile + 1).shl(3).and(0xff)).or(audioIndex.ushr(1).and(0xff)).toByte()
         this[1] = ((audioIndex.shl(7).and(0xff)).or(audioChannelCount.shl(3).and(0xff))).toByte()
+    }.let {
+        val buffer = ByteBuffer.allocate(2)
+        buffer.put(it)
+        buffer.position(0)
+        buffer
     }
 
     init {
         val sampleRate = 44100
         val audioFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, audioChannelCount)
-        audioFormat.setByteBuffer("csd-0", ByteBuffer.allocate(2).put(audioSpecificConfig))
+            audioFormat.setByteBuffer("csd-0", audioSpecificConfig)
+
         var currentTime = 0L
         audioDecodeCodec = object : AudioDecodeCodec(audioFormat) {
             override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
