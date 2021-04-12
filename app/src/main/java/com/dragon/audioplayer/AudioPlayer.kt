@@ -10,46 +10,51 @@ import java.util.concurrent.ArrayBlockingQueue
 class AudioPlayer {
     private val audioRtpWrapper = RtpWrapper()
     private val audioDecodeCodec: AudioDecodeCodec
-    private val audioBufferQueue = ArrayBlockingQueue<ByteArray>(10);
-    private val audioBufferSizeQueue = ArrayBlockingQueue<Int>(10);
+    private val indexArray = ArrayBlockingQueue<Int>(10)
+
+
+    private val audioChannelCount = 1;
+    private val audioProfile = 1
+
+    /**
+     *  97000, 88200, 64000, 48000,44100, 32000, 24000, 22050,16000, 12000, 11025, 8000,7350, 0, 0, 0
+     */
+    private val audioIndex = 4
+    private val audioSpecificConfig = ByteArray(2).apply {
+        this[0] = ((audioProfile + 1).shl(3).and(0xff)).or(audioIndex.ushr(1).and(0xff)).toByte()
+        this[1] = ((audioIndex.shl(7).and(0xff)).or(audioChannelCount.shl(3).and(0xff))).toByte()
+    }
 
     init {
         val sampleRate = 44100
-        val channelCount = 1
-        val audioFormat =
-            MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount)
-        val temp = ByteBuffer.allocate(2)
-        temp.put(0x12).put(0x08)
-        audioFormat.setByteBuffer("csd-0", temp)
-        temp.position(0)
+        val audioFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, audioChannelCount)
+        audioFormat.setByteBuffer("csd-0", ByteBuffer.allocate(2).put(audioSpecificConfig))
         var currentTime = 0L
         audioDecodeCodec = object : AudioDecodeCodec(audioFormat) {
             override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
-                if (currentTime == 0L) {
-                    currentTime = System.currentTimeMillis()
-                }
-                val data = audioBufferQueue.take();
-                val size = audioBufferSizeQueue.take();
-                val buffer = codec.getInputBuffer(index);
-                val time = (System.currentTimeMillis() - currentTime) * 1000
-                buffer?.position(0)
-                buffer?.put(data, 4, size - 4);
-                buffer?.position(0)
-                codec.queueInputBuffer(index, 0, size - 4, time, 1)
+                indexArray.put(index)
             }
         }
 
         audioRtpWrapper.open(40020, 97, 1000);
         audioRtpWrapper.setCallback { data, len ->
-            audioBufferQueue.put(data);
-            audioBufferSizeQueue.put(len);
+            if (len < 4) return@setCallback
+            val index = indexArray.take()
+            if (currentTime == 0L) {
+                currentTime = System.currentTimeMillis()
+            }
+            val buffer = audioDecodeCodec.mediaCodec.getInputBuffer(index)
+            val time = (System.currentTimeMillis() - currentTime) * 1000
+            buffer?.position(0)
+            buffer?.put(data, 4, len - 4);
+            buffer?.position(0)
+            audioDecodeCodec.mediaCodec.queueInputBuffer(index, 0, len - 4, time, 1)
         };
     }
 
     fun release() {
-        audioDecodeCodec.release {
-            audioRtpWrapper.close();
-        }
+        audioRtpWrapper.close();
+        audioDecodeCodec.release()
     }
 
 }

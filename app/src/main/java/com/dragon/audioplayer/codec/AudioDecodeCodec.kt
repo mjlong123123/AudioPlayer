@@ -10,10 +10,12 @@ abstract class AudioDecodeCodec(mediaFormat: MediaFormat) : BufferDecodeCodec(me
 
     override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
         Log.d("audio_dragon","onOutputBufferAvailable $index")
-        val buffer = codec.getOutputBuffer(index) ?: return;
-        buffer.position(info.offset); 
-        audioTrack?.write(buffer, info.size, WRITE_BLOCKING);
-        codec.releaseOutputBuffer(index, false);
+        kotlin.runCatching {
+            val buffer = codec.getOutputBuffer(index) ?: return;
+            buffer.position(info.offset);
+            audioTrack?.write(buffer, info.size, WRITE_BLOCKING);
+            codec.releaseOutputBuffer(index, false);
+        }
     }
 
     override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
